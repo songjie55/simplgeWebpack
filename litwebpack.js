@@ -24,7 +24,7 @@ function getModuleInfo(file) {
     return {file, deps, code}
 }
 
-// 模块解析
+// 模块解析，并且收集依赖
 function parseModules(file) {
     const entry = getModuleInfo(file)
     const temp = [entry]//依赖数组
@@ -51,23 +51,31 @@ function getDeps(temp, {deps}) {
     })
 }
 
-let content = parseModules('./index.js')
-console.log(content)
-// //最外层一个自运行函数,参数就是webpack分析代码后得出的依赖索引表
-// ;(function (dep) {
-//     //实现require
-//     function require(file) {
-//         var module = {};
-//         //自运行函数是为了防止修改到全局变量
-//         (function (module, code) {
-//             eval(code)
-//         })(module, dep[file])
-//         return module
-//     }
-//
-//     require('index.js')//加载入口文件
-// })({
-//     'index.js': 'var add=require("a.js").default;let x=add(1,2);console.log(x)',//入口文件的内容是通过nodeJS的file读写文件模块来获取的，这里直接写获取后的结果
-//     'a.js': `module.default = function sum(a, b) {return a + b}`
-// })
+//todo 依赖重复引用没做到去重
+
+function bundle(file) {
+    let depsGraph = JSON.stringify(parseModules(file))
+    //最外层一个自运行函数,参数就是webpack分析代码后得出的依赖索引表
+    return `;(function (graph) {
+        //实现require
+        function require(file) {
+            function absRequire(relPath) {//获取真实文件路径
+                return require(graph[file].deps[relPath])
+            }
+             var exports = {};
+            (function (require,exports,code) {//自运行函数是为了防止修改到全局变量
+                eval(code)
+            })(absRequire,exports,graph[file].code)
+            return exports 
+        }
+        require('${file}')//加载入口文件
+    })(${depsGraph})`
+
+}
+
+let content=bundle('./index.js')
+
+!fs.existsSync("./dist") && fs.mkdirSync("./dist");
+fs.writeFileSync("./dist/bundle.js", content);
+
 
